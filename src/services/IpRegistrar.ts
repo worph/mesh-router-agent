@@ -63,14 +63,14 @@ function isValidIp(ip: string): boolean {
 
 /**
  * Registers the IP with mesh-router-backend
- * POST /ip/:userid/:sig { vpnIp: string }
+ * POST /router/api/ip/:userid/:sig { vpnIp: string }
  */
 export async function registerIp(
   provider: ProviderConfig,
   publicIp: string
 ): Promise<RegistrationResult> {
   const { backendUrl, userId, signature } = provider;
-  const url = `${backendUrl}/ip/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
+  const url = `${backendUrl}/router/api/ip/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
     const jsonData = JSON.stringify({ vpnIp: publicIp }).replace(/"/g, '\\"');
@@ -107,7 +107,7 @@ export async function registerIp(
  */
 export async function checkBackendHealth(backendUrl: string): Promise<boolean> {
   try {
-    const { stdout } = await exec(`curl -s --max-time 10 "${backendUrl}/available/healthcheck"`);
+    const { stdout } = await exec(`curl -s --max-time 10 "${backendUrl}/router/api/available/healthcheck"`);
     // Any valid JSON response means backend is up
     JSON.parse(stdout);
     return true;
@@ -125,13 +125,13 @@ export interface HeartbeatResult {
 
 /**
  * Sends a heartbeat to mesh-router-backend
- * POST /heartbeat/:userid/:sig
+ * POST /router/api/heartbeat/:userid/:sig
  */
 export async function sendHeartbeat(
   provider: ProviderConfig
 ): Promise<HeartbeatResult> {
   const { backendUrl, userId, signature } = provider;
-  const url = `${backendUrl}/heartbeat/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
+  const url = `${backendUrl}/router/api/heartbeat/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
     const curlCommand = `curl -s -X POST "${url}"`;
