@@ -8,7 +8,8 @@ const exec = promisify(execCallback);
 export interface RegistrationResult {
   success: boolean;
   message: string;
-  vpnIp?: string;
+  hostIp?: string;
+  targetPort?: number;
   domain?: string;
   error?: string;
 }
@@ -62,18 +63,19 @@ function isValidIp(ip: string): boolean {
 }
 
 /**
- * Registers the IP with mesh-router-backend
- * POST /router/api/ip/:userid/:sig { vpnIp: string }
+ * Registers the IP and target port with mesh-router-backend
+ * POST /router/api/ip/:userid/:sig { hostIp: string, targetPort: number }
  */
 export async function registerIp(
   provider: ProviderConfig,
-  publicIp: string
+  publicIp: string,
+  targetPort: number = 443
 ): Promise<RegistrationResult> {
   const { backendUrl, userId, signature } = provider;
   const url = `${backendUrl}/router/api/ip/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
-    const jsonData = JSON.stringify({ vpnIp: publicIp }).replace(/"/g, '\\"');
+    const jsonData = JSON.stringify({ hostIp: publicIp, targetPort }).replace(/"/g, '\\"');
     const curlCommand = `curl -s -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
 
     const { stdout } = await exec(curlCommand);
@@ -90,7 +92,8 @@ export async function registerIp(
     return {
       success: true,
       message: response.message || 'IP registered successfully',
-      vpnIp: response.vpnIp,
+      hostIp: response.hostIp,
+      targetPort: response.targetPort,
       domain: response.domain,
     };
   } catch (error) {

@@ -12,6 +12,8 @@ interface EnvConfig {
   PROVIDER: string;
   /** Public IP to register (empty = auto-detect) */
   PUBLIC_IP: string;
+  /** Target port where Caddy listens for incoming traffic (default: 443) */
+  TARGET_PORT: number;
   /** Heartbeat interval in seconds (default: 1800 = 30 minutes) */
   HEARTBEAT_INTERVAL: number;
 }
@@ -19,6 +21,7 @@ interface EnvConfig {
 export const config: EnvConfig = {
   PROVIDER: process.env.PROVIDER || '',
   PUBLIC_IP: process.env.PUBLIC_IP || '',
+  TARGET_PORT: parseInt(process.env.TARGET_PORT || '443', 10),
   HEARTBEAT_INTERVAL: parseInt(process.env.HEARTBEAT_INTERVAL || '1800', 10),
 };
 

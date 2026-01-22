@@ -22,6 +22,7 @@ async function main() {
   const provider = parseProvider(config.PROVIDER);
   console.log(`Backend URL: ${provider.backendUrl}`);
   console.log(`User ID: ${provider.userId}`);
+  console.log(`Target port: ${config.TARGET_PORT}`);
   console.log(`Heartbeat interval: ${config.HEARTBEAT_INTERVAL}s (${config.HEARTBEAT_INTERVAL / 60} min)`);
 
   // Wait for backend to be available
@@ -38,9 +39,9 @@ async function main() {
 
   // Initial IP registration
   const publicIp = config.PUBLIC_IP || (await detectPublicIp());
-  console.log(`\nRegistering IP: ${publicIp}`);
+  console.log(`\nRegistering IP: ${publicIp} (port: ${config.TARGET_PORT})`);
 
-  const regResult = await registerIp(provider, publicIp);
+  const regResult = await registerIp(provider, publicIp, config.TARGET_PORT);
   if (regResult.success) {
     console.log(`✓ ${regResult.message}`);
     if (regResult.domain) {
