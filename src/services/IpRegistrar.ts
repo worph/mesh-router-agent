@@ -1,6 +1,6 @@
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
-import { ProviderConfig } from '../config/EnvConfig.js';
+import { ProviderConfig, HealthCheckConfig } from '../config/EnvConfig.js';
 import { detectPublicIpViaStun } from './StunClient.js';
 
 const exec = promisify(execCallback);
@@ -10,6 +10,21 @@ export interface RegistrationResult {
   message: string;
   hostIp?: string;
   targetPort?: number;
+  domain?: string;
+  error?: string;
+}
+
+export interface Route {
+  ip: string;
+  port: number;
+  priority: number;
+  healthCheck?: HealthCheckConfig;
+}
+
+export interface RouteRegistrationResult {
+  success: boolean;
+  message: string;
+  routes?: Route[];
   domain?: string;
   error?: string;
 }
@@ -65,6 +80,7 @@ function isValidIp(ip: string): boolean {
 /**
  * Registers the IP and target port with mesh-router-backend
  * POST /router/api/ip/:userid/:sig { hostIp: string, targetPort: number }
+ * @deprecated Use registerRoutes instead for v2 API
  */
 export async function registerIp(
   provider: ProviderConfig,
@@ -103,6 +119,68 @@ export async function registerIp(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Registers routes with mesh-router-backend (v2 API)
+ * POST /router/api/routes/:userid/:sig { routes: Route[] }
+ *
+ * This replaces the old registerIp function and supports:
+ * - Multiple routes with priority
+ * - Optional health check configuration
+ * - TTL-based expiry (routes must be refreshed every 5 minutes)
+ */
+export async function registerRoutes(
+  provider: ProviderConfig,
+  routes: Route[]
+): Promise<RouteRegistrationResult> {
+  const { backendUrl, userId, signature } = provider;
+  const url = `${backendUrl}/router/api/routes/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
+
+  try {
+    const jsonData = JSON.stringify({ routes }).replace(/"/g, '\\"');
+    const curlCommand = `curl -s -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
+
+    const { stdout } = await exec(curlCommand);
+    const response = JSON.parse(stdout);
+
+    if (response.error) {
+      return {
+        success: false,
+        message: 'Route registration failed',
+        error: response.error,
+      };
+    }
+
+    return {
+      success: true,
+      message: response.message || 'Routes registered successfully',
+      routes: response.routes,
+      domain: response.domain,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'Route registration request failed',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Build a route object from configuration
+ */
+export function buildRoute(
+  ip: string,
+  port: number,
+  priority: number,
+  healthCheck?: HealthCheckConfig
+): Route {
+  const route: Route = { ip, port, priority };
+  if (healthCheck) {
+    route.healthCheck = healthCheck;
+  }
+  return route;
 }
 
 /**

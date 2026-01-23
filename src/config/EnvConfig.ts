@@ -7,6 +7,11 @@ export interface ProviderConfig {
   signature: string;
 }
 
+export interface HealthCheckConfig {
+  path: string;
+  host?: string;
+}
+
 interface EnvConfig {
   /** Provider connection string: <backend_url>,<userid>,<signature> */
   PROVIDER: string;
@@ -14,7 +19,16 @@ interface EnvConfig {
   PUBLIC_IP: string;
   /** Target port where Caddy listens for incoming traffic (default: 443) */
   TARGET_PORT: number;
-  /** Heartbeat interval in seconds (default: 1800 = 30 minutes) */
+  /** Route priority (lower = higher priority, default: 1 for direct connection) */
+  ROUTE_PRIORITY: number;
+  /** Route refresh interval in seconds (default: 300 = 5 minutes) */
+  REFRESH_INTERVAL: number;
+  /** Optional health check HTTP path (e.g., /.well-known/health) */
+  HEALTH_CHECK_PATH: string;
+  /** Optional health check Host header override */
+  HEALTH_CHECK_HOST: string;
+  // Legacy: kept for backward compatibility, use REFRESH_INTERVAL instead
+  /** @deprecated Use REFRESH_INTERVAL instead */
   HEARTBEAT_INTERVAL: number;
 }
 
@@ -22,8 +36,27 @@ export const config: EnvConfig = {
   PROVIDER: process.env.PROVIDER || '',
   PUBLIC_IP: process.env.PUBLIC_IP || '',
   TARGET_PORT: parseInt(process.env.TARGET_PORT || '443', 10),
-  HEARTBEAT_INTERVAL: parseInt(process.env.HEARTBEAT_INTERVAL || '1800', 10),
+  ROUTE_PRIORITY: parseInt(process.env.ROUTE_PRIORITY || '1', 10),
+  REFRESH_INTERVAL: parseInt(process.env.REFRESH_INTERVAL || process.env.HEARTBEAT_INTERVAL || '300', 10),
+  HEALTH_CHECK_PATH: process.env.HEALTH_CHECK_PATH || '',
+  HEALTH_CHECK_HOST: process.env.HEALTH_CHECK_HOST || '',
+  // Legacy support
+  HEARTBEAT_INTERVAL: parseInt(process.env.HEARTBEAT_INTERVAL || '300', 10),
 };
+
+/**
+ * Build health check config from environment if configured
+ */
+export function getHealthCheckConfig(): HealthCheckConfig | undefined {
+  if (!config.HEALTH_CHECK_PATH) {
+    return undefined;
+  }
+
+  return {
+    path: config.HEALTH_CHECK_PATH,
+    ...(config.HEALTH_CHECK_HOST && { host: config.HEALTH_CHECK_HOST }),
+  };
+}
 
 /**
  * Parse the PROVIDER connection string into its components

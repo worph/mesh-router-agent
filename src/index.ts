@@ -1,12 +1,13 @@
-import { config, parseProvider } from './config/EnvConfig.js';
+import { config, parseProvider, getHealthCheckConfig } from './config/EnvConfig.js';
 import {
-  registerIp,
+  registerRoutes,
+  buildRoute,
   detectPublicIp,
   checkBackendHealth,
-  sendHeartbeat,
+  Route,
 } from './services/IpRegistrar.js';
 
-const VERSION = process.env.BUILD_VERSION || '1.0.0';
+const VERSION = process.env.BUILD_VERSION || '2.0.0';
 
 async function main() {
   console.log(`mesh-router-agent v${VERSION}`);
@@ -20,10 +21,16 @@ async function main() {
   }
 
   const provider = parseProvider(config.PROVIDER);
+  const healthCheck = getHealthCheckConfig();
+
   console.log(`Backend URL: ${provider.backendUrl}`);
   console.log(`User ID: ${provider.userId}`);
   console.log(`Target port: ${config.TARGET_PORT}`);
-  console.log(`Heartbeat interval: ${config.HEARTBEAT_INTERVAL}s (${config.HEARTBEAT_INTERVAL / 60} min)`);
+  console.log(`Route priority: ${config.ROUTE_PRIORITY}`);
+  console.log(`Refresh interval: ${config.REFRESH_INTERVAL}s (${Math.round(config.REFRESH_INTERVAL / 60)} min)`);
+  if (healthCheck) {
+    console.log(`Health check: ${healthCheck.path}${healthCheck.host ? ` (host: ${healthCheck.host})` : ''}`);
+  }
 
   // Wait for backend to be available
   console.log('\nChecking backend availability...');
@@ -37,37 +44,60 @@ async function main() {
   }
   console.log('Backend is available!');
 
-  // Initial IP registration
+  // Detect public IP
   const publicIp = config.PUBLIC_IP || (await detectPublicIp());
-  console.log(`\nRegistering IP: ${publicIp} (port: ${config.TARGET_PORT})`);
+  console.log(`\nDetected public IP: ${publicIp}`);
 
-  const regResult = await registerIp(provider, publicIp, config.TARGET_PORT);
-  if (regResult.success) {
-    console.log(`✓ ${regResult.message}`);
-    if (regResult.domain) {
-      console.log(`  Domain: ${regResult.domain}`);
+  // Build route
+  const route: Route = buildRoute(
+    publicIp,
+    config.TARGET_PORT,
+    config.ROUTE_PRIORITY,
+    healthCheck
+  );
+
+  // Register route function (used for initial and refresh)
+  async function doRegisterRoute(): Promise<boolean> {
+    const result = await registerRoutes(provider, [route]);
+
+    if (result.success) {
+      console.log(`[${new Date().toISOString()}] Route registered: ${route.ip}:${route.port} (priority: ${route.priority})`);
+      if (result.domain) {
+        console.log(`  Domain: ${result.domain}`);
+      }
+      return true;
+    } else {
+      console.error(`[${new Date().toISOString()}] Route registration failed: ${result.error}`);
+      return false;
     }
-  } else {
-    console.error(`✗ ${regResult.message}: ${regResult.error}`);
+  }
+
+  // Initial route registration
+  console.log('\nRegistering route...');
+  const initialSuccess = await doRegisterRoute();
+  if (!initialSuccess) {
+    console.error('Initial route registration failed, exiting...');
     process.exit(1);
   }
 
-  // Heartbeat loop
-  console.log('\nStarting heartbeat loop...');
+  // Route refresh loop (replaces heartbeat)
+  console.log('\nStarting route refresh loop...');
 
   while (true) {
-    await sleep(config.HEARTBEAT_INTERVAL * 1000);
+    await sleep(config.REFRESH_INTERVAL * 1000);
 
     try {
-      const result = await sendHeartbeat(provider);
+      // Re-detect IP in case it changed
+      const currentIp = config.PUBLIC_IP || (await detectPublicIp());
 
-      if (result.success) {
-        console.log(`[${new Date().toISOString()}] Heartbeat OK`);
-      } else {
-        console.error(`[${new Date().toISOString()}] Heartbeat failed: ${result.error}`);
+      if (currentIp !== route.ip) {
+        console.log(`[${new Date().toISOString()}] IP changed: ${route.ip} -> ${currentIp}`);
+        route.ip = currentIp;
       }
+
+      await doRegisterRoute();
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] Heartbeat error:`, error);
+      console.error(`[${new Date().toISOString()}] Route refresh error:`, error);
     }
   }
 }
