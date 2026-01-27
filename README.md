@@ -1,16 +1,16 @@
 # mesh-router-agent
 
-A lightweight NSL agent that registers a public IP with the mesh-router-backend, enabling direct IP routing without VPN tunneling.
+A lightweight Mesh Router agent that registers a public IP with the mesh-router-backend, enabling direct IP routing without VPN tunneling.
 
 ## Purpose
 
-This agent is part of Phase 1 of the NSL architecture improvement to reduce latency by allowing direct connections to PCS instances via their public IP, with Caddy handling local routing.
+This agent is part of the Mesh Router architecture, designed to reduce latency by allowing direct connections to PCS instances via their public IP, with Caddy handling local routing.
 
 ## How It Works
 
 1. Parses the `PROVIDER` connection string
 2. Detects or uses configured public IP
-3. Registers the IP with mesh-router-backend via `POST /ip/:userid/:sig`
+3. Registers the route with mesh-router-backend via `POST /routes/:userid/:sig` (priority 1)
 4. Sends periodic heartbeats via `POST /heartbeat/:userid/:sig` to update `lastSeenOnline`
 
 ## Configuration

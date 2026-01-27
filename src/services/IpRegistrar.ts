@@ -1,9 +1,8 @@
-import { exec as execCallback } from 'child_process';
-import { promisify } from 'util';
 import { ProviderConfig, HealthCheckConfig } from '../config/EnvConfig.js';
 import { detectPublicIpViaStun } from './StunClient.js';
 
-const exec = promisify(execCallback);
+/** HTTP request timeout in milliseconds */
+const HTTP_TIMEOUT = 10000;
 
 export interface RegistrationResult {
   success: boolean;
@@ -30,6 +29,54 @@ export interface RouteRegistrationResult {
 }
 
 /**
+ * Creates an AbortController with timeout
+ */
+function createTimeoutController(ms: number): AbortController {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller;
+}
+
+/**
+ * Performs a GET request with timeout
+ */
+async function httpGet(url: string, timeoutMs: number = HTTP_TIMEOUT): Promise<string> {
+  const controller = createTimeoutController(timeoutMs);
+  const response = await fetch(url, {
+    method: 'GET',
+    signal: controller.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return response.text();
+}
+
+/**
+ * Performs a POST request with JSON body and timeout
+ */
+async function httpPost<T>(
+  url: string,
+  body: unknown,
+  timeoutMs: number = HTTP_TIMEOUT
+): Promise<T> {
+  const controller = createTimeoutController(timeoutMs);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  });
+
+  const data = await response.json() as T;
+  return data;
+}
+
+/**
  * Detects the public IP address using STUN protocol (primary)
  * Falls back to HTTP services if STUN fails
  */
@@ -50,8 +97,8 @@ export async function detectPublicIp(): Promise<string> {
 
   for (const service of httpServices) {
     try {
-      const { stdout } = await exec(`curl -s --max-time 10 ${service}`);
-      const ip = stdout.trim();
+      const text = await httpGet(service);
+      const ip = text.trim();
       if (isValidIp(ip)) {
         console.log(`Detected public IP: ${ip} (via HTTP ${service})`);
         return ip;
@@ -91,11 +138,10 @@ export async function registerIp(
   const url = `${backendUrl}/router/api/ip/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
-    const jsonData = JSON.stringify({ hostIp: publicIp, targetPort }).replace(/"/g, '\\"');
-    const curlCommand = `curl -s -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
-
-    const { stdout } = await exec(curlCommand);
-    const response = JSON.parse(stdout);
+    const response = await httpPost<{ error?: string; message?: string; hostIp?: string; targetPort?: number; domain?: string }>(
+      url,
+      { hostIp: publicIp, targetPort }
+    );
 
     if (response.error) {
       return {
@@ -138,11 +184,10 @@ export async function registerRoutes(
   const url = `${backendUrl}/router/api/routes/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
-    const jsonData = JSON.stringify({ routes }).replace(/"/g, '\\"');
-    const curlCommand = `curl -s -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
-
-    const { stdout } = await exec(curlCommand);
-    const response = JSON.parse(stdout);
+    const response = await httpPost<{ error?: string; message?: string; routes?: Route[]; domain?: string }>(
+      url,
+      { routes }
+    );
 
     if (response.error) {
       return {
@@ -188,9 +233,9 @@ export function buildRoute(
  */
 export async function checkBackendHealth(backendUrl: string): Promise<boolean> {
   try {
-    const { stdout } = await exec(`curl -s --max-time 10 "${backendUrl}/router/api/available/healthcheck"`);
+    const text = await httpGet(`${backendUrl}/router/api/available/healthcheck`);
     // Any valid JSON response means backend is up
-    JSON.parse(stdout);
+    JSON.parse(text);
     return true;
   } catch {
     return false;
@@ -215,9 +260,10 @@ export async function sendHeartbeat(
   const url = `${backendUrl}/router/api/heartbeat/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
 
   try {
-    const curlCommand = `curl -s -X POST "${url}"`;
-    const { stdout } = await exec(curlCommand);
-    const response = JSON.parse(stdout);
+    const response = await httpPost<{ error?: string; message?: string; lastSeenOnline?: string }>(
+      url,
+      {}
+    );
 
     if (response.error) {
       return {

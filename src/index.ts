@@ -6,6 +6,14 @@ import {
   checkBackendHealth,
   Route,
 } from './services/IpRegistrar.js';
+import {
+  loadCertificateState,
+  ensureKeyPair,
+  requestCertificate,
+  needsRenewal,
+  formatTimeRemaining,
+  CertificateState,
+} from './services/CertificateManager.js';
 
 const VERSION = process.env.BUILD_VERSION || '2.0.0';
 
@@ -43,6 +51,19 @@ async function main() {
     }
   }
   console.log('Backend is available!');
+
+  // Certificate management
+  console.log('\nInitializing certificate...');
+  let certState: CertificateState | null = loadCertificateState();
+
+  if (!certState || needsRenewal(certState.expiresAt)) {
+    const reason = !certState ? 'no certificate found' : `renewal needed (expires in ${formatTimeRemaining(certState.expiresAt)})`;
+    console.log(`[Cert] Requesting new certificate: ${reason}`);
+    const keyPem = await ensureKeyPair();
+    certState = await requestCertificate(provider, keyPem);
+  } else {
+    console.log(`[Cert] Certificate valid, expires in ${formatTimeRemaining(certState.expiresAt)}`);
+  }
 
   // Detect public IP
   const publicIp = config.PUBLIC_IP || (await detectPublicIp());
@@ -87,6 +108,13 @@ async function main() {
     await sleep(config.REFRESH_INTERVAL * 1000);
 
     try {
+      // Check certificate renewal
+      if (certState && needsRenewal(certState.expiresAt)) {
+        console.log(`[${new Date().toISOString()}] Certificate renewal needed (expires in ${formatTimeRemaining(certState.expiresAt)})`);
+        const keyPem = await ensureKeyPair();
+        certState = await requestCertificate(provider, keyPem);
+      }
+
       // Re-detect IP in case it changed
       const currentIp = config.PUBLIC_IP || (await detectPublicIp());
 

@@ -16,6 +16,9 @@ services:
 
       # Mount entrypoint script
       - ./entrypoint-dev.sh:/entrypoint-dev.sh:ro
+
+      # Named volume for certificate data persistence
+      - agent-data:/app/data
     environment:
       - NODE_ENV=development
       # Provider connection string: <backend_url>,<userid>,<signature>
@@ -32,3 +35,4 @@ services:
 volumes:
   node_modules:
   pnpm-store:
+  agent-data:

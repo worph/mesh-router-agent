@@ -30,6 +30,12 @@ interface EnvConfig {
   // Legacy: kept for backward compatibility, use REFRESH_INTERVAL instead
   /** @deprecated Use REFRESH_INTERVAL instead */
   HEARTBEAT_INTERVAL: number;
+  /** Path to store the agent's private key (default: ./data/key.pem) */
+  CERT_KEY_PATH: string;
+  /** Path to store the agent's certificate (default: ./data/cert.pem) */
+  CERT_PATH: string;
+  /** Path to store the CA certificate (default: ./data/ca-cert.pem) */
+  CA_CERT_PATH: string;
 }
 
 export const config: EnvConfig = {
@@ -42,6 +48,10 @@ export const config: EnvConfig = {
   HEALTH_CHECK_HOST: process.env.HEALTH_CHECK_HOST || '',
   // Legacy support
   HEARTBEAT_INTERVAL: parseInt(process.env.HEARTBEAT_INTERVAL || '300', 10),
+  // Certificate paths
+  CERT_KEY_PATH: process.env.CERT_KEY_PATH || './data/key.pem',
+  CERT_PATH: process.env.CERT_PATH || './data/cert.pem',
+  CA_CERT_PATH: process.env.CA_CERT_PATH || './data/ca-cert.pem',
 };
 
 /**
